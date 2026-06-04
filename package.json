@@ -1,0 +1,50 @@
+{
+  "name": "devsignal-backend",
+  "version": "1.0.0",
+  "description": "DevSignal backend — content monitoring, AI processing, Telegram publishing",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app",
+    "dev": "nodemon app",
+    "migrate": "sequelize-cli db:migrate",
+    "migrate:undo": "sequelize-cli db:migrate:undo",
+    "seed": "sequelize-cli db:seed:all"
+  },
+  "_moduleAliases": {
+    "@root": ".",
+    "@config": "config",
+    "@constants": "constants",
+    "@controllers": "controllers",
+    "@helpers": "helpers",
+    "@middleware": "middleware",
+    "@models": "models",
+    "@queues": "queues",
+    "@routes": "routes",
+    "@seeders": "seeders",
+    "@validations": "validations",
+    "@scripts": "scripts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "axios": "^1.7.7",
+    "body-parser": "^1.20.2",
+    "bullmq": "^5.21.1",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "ioredis": "^5.6.1",
+    "jsonwebtoken": "^9.0.2",
+    "module-alias": "^2.2.3",
+    "mysql2": "^3.9.4",
+    "node-cron": "^3.0.3",
+    "nodemon": "^3.1.0",
+    "openai": "^6.42.0",
+    "rss-parser": "^3.13.0",
+    "sequelize": "^6.37.2",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "sequelize-cli": "^6.6.3"
+  }
+}

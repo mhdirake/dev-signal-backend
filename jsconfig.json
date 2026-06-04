@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@root/*": ["./*"],
+      "@config/*": ["config/*"],
+      "@constants/*": ["constants/*"],
+      "@controllers/*": ["controllers/*"],
+      "@helpers/*": ["helpers/*"],
+      "@middleware/*": ["middleware/*"],
+      "@models/*": ["models/*"],
+      "@queues/*": ["queues/*"],
+      "@routes/*": ["routes/*"],
+      "@seeders/*": ["seeders/*"],
+      "@validations/*": ["validations/*"],
+      "@scripts/*": ["scripts/*"]
+    }
+  }
+}
