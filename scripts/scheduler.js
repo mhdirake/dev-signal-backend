@@ -1,10 +1,12 @@
 'use strict';
 
 const cron = require('node-cron');
-const { Source } = require('@models');
+const { Op } = require('sequelize');
+const { Source, Post } = require('@models');
 const { fetchQueue } = require('@queues/workers/fetchWorker');
+const { publishQueue } = require('@queues/workers/publishWorker');
 
-// Every 30 minutes
+// Every 30 minutes — fetch new content from sources
 cron.schedule('*/30 * * * *', async () => {
   console.log('[scheduler] Starting fetch cycle...');
   try {
@@ -18,4 +20,29 @@ cron.schedule('*/30 * * * *', async () => {
   }
 });
 
-console.log('[scheduler] Cron registered — runs every 30 minutes');
+// Every minute — publish scheduled posts whose time has come
+cron.schedule('* * * * *', async () => {
+  try {
+    const due = await Post.findAll({
+      where: {
+        status: 'scheduled',
+        scheduledAt: { [Op.lte]: new Date() },
+      },
+    });
+
+    if (!due.length) return;
+
+    for (const post of due) {
+      await publishQueue.add('publish', { postId: post.id }, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 10000 },
+      });
+    }
+
+    console.log(`[scheduler] Enqueued ${due.length} scheduled post(s) for publishing`);
+  } catch (err) {
+    console.error('[scheduler] Scheduled publish cycle failed:', err.message);
+  }
+});
+
+console.log('[scheduler] Cron registered — fetch every 30min, publish check every 1min');

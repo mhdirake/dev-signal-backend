@@ -2,6 +2,8 @@ require('module-alias/register');
 require('dotenv').config();
 require('@queues');
 require('@scripts/scheduler');
+const { startPolling } = require('@scripts/botPolling');
+startPolling();
 
 const express = require('express');
 const cors = require('cors');

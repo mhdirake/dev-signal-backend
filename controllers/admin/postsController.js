@@ -1,7 +1,8 @@
 'use strict';
 
 const { Post, RawItem, Source } = require('@models');
-const { Op } = require('sequelize');
+const generatePersianSummary = require('@helpers/ai/persian');
+const notifyAdmin = require('@helpers/telegram/adminNotifier');
 
 exports.list = async (req, res) => {
   try {
@@ -59,6 +60,11 @@ exports.approve = async (req, res) => {
 
     await post.update({ status: 'approved' });
     res.json({ post });
+
+    // async — don't block the response
+    generatePersianSummary(post)
+      .then((summary) => notifyAdmin(post, summary))
+      .catch((err) => console.error('[approve] notify failed:', err.message));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
