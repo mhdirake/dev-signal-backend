@@ -1,8 +1,7 @@
 'use strict';
 
 const { Post, RawItem, Source } = require('@models');
-const generatePersianSummary = require('@helpers/ai/persian');
-const notifyAdmin = require('@helpers/telegram/adminNotifier');
+const { publishQueue } = require('@queues/workers/publishWorker');
 
 exports.list = async (req, res) => {
   try {
@@ -61,10 +60,10 @@ exports.approve = async (req, res) => {
     await post.update({ status: 'approved' });
     res.json({ post });
 
-    // async — don't block the response
-    generatePersianSummary(post)
-      .then((summary) => notifyAdmin(post, summary))
-      .catch((err) => console.error('[approve] notify failed:', err.message));
+    publishQueue.add('publish', { postId: post.id }, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 10000 },
+    }).catch((err) => console.error('[approve] publish queue error:', err.message));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
