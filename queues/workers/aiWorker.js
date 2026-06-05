@@ -4,6 +4,8 @@ const { Worker, Queue } = require('bullmq');
 const { connectionOptions } = require('@config/redis');
 const { RawItem, Post } = require('@models');
 const { analyzeContent } = require('@helpers/ai');
+const generatePersianSummary = require('@helpers/ai/persian');
+const notifyAdmin = require('@helpers/telegram/adminNotifier');
 
 const QUEUE_NAME = 'ai';
 const RELEVANCE_THRESHOLD = 0.5;
@@ -43,6 +45,10 @@ const worker = new Worker(QUEUE_NAME, async (job) => {
   });
 
   console.log(`[aiWorker] Created post ${post.id} — score: ${result.relevanceScore}, category: ${result.category}`);
+
+  generatePersianSummary(post)
+    .then(summary => notifyAdmin(post, summary))
+    .catch(err => console.error('[aiWorker] notify failed:', err.message));
 }, { connection: connectionOptions });
 
 worker.on('ready', () => console.log('[aiWorker] Worker ready'));

@@ -49,4 +49,8 @@ async function deleteMessage(messageId) {
   });
 }
 
-module.exports = { sendMessage, sendMessageToUser, answerCallbackQuery, editMessageReplyMarkup, deleteMessage };
+async function leaveChat(chatId) {
+  await axios.post(`${BASE_URL()}/leaveChat`, { chat_id: chatId });
+}
+
+module.exports = { sendMessage, sendMessageToUser, answerCallbackQuery, editMessageReplyMarkup, deleteMessage, leaveChat };

@@ -6,11 +6,14 @@ const parser = new Parser();
 module.exports = async function fetchRss(identifier, lastFetchedAt) {
   const feed = await parser.parseURL(identifier);
 
+  const since = lastFetchedAt
+    ? new Date(lastFetchedAt)
+    : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
   return feed.items
     .filter(item => {
-      if (!lastFetchedAt) return true;
       const date = item.isoDate || item.pubDate;
-      return date && new Date(date) > new Date(lastFetchedAt);
+      return date && new Date(date) > since;
     })
     .map(item => ({
       externalId: item.guid || item.link,

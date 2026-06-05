@@ -1,9 +1,10 @@
 'use strict';
 
 const axios = require('axios');
-const { Post, PublishLog } = require('@models');
+const { Post } = require('@models');
 const { publishQueue } = require('@queues/workers/publishWorker');
-const { answerCallbackQuery, editMessageReplyMarkup, sendMessageToUser } = require('@helpers/telegram');
+const { answerCallbackQuery, editMessageReplyMarkup, sendMessageToUser, leaveChat } = require('@helpers/telegram');
+const { handlePersonalMessage, handleVoice, sendMenu } = require('@helpers/bot/personalBot');
 
 const BASE_URL = () =>
   `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`;
@@ -15,7 +16,7 @@ let offset = 0;
 async function getUpdates() {
   try {
     const { data } = await axios.get(`${BASE_URL()}/getUpdates`, {
-      params: { offset, timeout: 30, allowed_updates: ['callback_query', 'message'] },
+      params: { offset, timeout: 30, allowed_updates: ['callback_query', 'message', 'my_chat_member'] },
       timeout: 35000,
     });
 
@@ -33,18 +34,52 @@ async function getUpdates() {
 }
 
 async function handleUpdate(update) {
-  // Handle /start — register admin chat ID
-  if (update.message?.text === '/start') {
+  if (update.message) {
     const chatId = update.message.chat.id;
-    const username = update.message.from?.username;
-    console.log(`[botPolling] /start from ${username} — chat_id: ${chatId}`);
-    await sendMessageToUser(chatId, `✅ سلام! آیدی تلگرامت <code>${chatId}</code> هست.\n\nاین عدد رو در ADMIN_TELEGRAM_USER_ID بذار.`);
+    const isAdmin = String(chatId) === String(ADMIN_ID());
+
+    if (update.message.text) {
+      if (update.message.text === '/start') {
+        const username = update.message.from?.username;
+        console.log(`[botPolling] /start from ${username} — chat_id: ${chatId}`);
+        if (isAdmin) {
+          await sendMenu(chatId);
+        } else {
+          await sendMessageToUser(chatId, `This is a private bot and is not available for public use.`);
+        }
+        return;
+      }
+      if (isAdmin) {
+        await handlePersonalMessage(update.message.text).catch(
+          (err) => console.error('[personalBot] error:', err.message)
+        );
+      }
+      return;
+    }
+
+    if (update.message.voice && isAdmin) {
+      await handleVoice(update.message.voice.file_id).catch(
+        (err) => console.error('[personalBot] voice error:', err.message)
+      );
+      return;
+    }
+
+    return;
+  }
+
+  if (update.my_chat_member) {
+    const chat = update.my_chat_member.chat;
+    const newStatus = update.my_chat_member.new_chat_member?.status;
+    if (chat.type !== 'private' && ['member', 'administrator'].includes(newStatus)) {
+      console.log(`[botPolling] Added to ${chat.type} "${chat.title}" — leaving`);
+      await leaveChat(chat.id).catch(() => {});
+    }
     return;
   }
 
   if (!update.callback_query) return;
 
-  const { id: callbackId, data: callbackData, message, from } = update.callback_query;
+    const { id: callbackId, data: callbackData, message } = update.callback_query;
   if (!callbackData) return;
 
   const [action, postIdStr] = callbackData.split(':');
