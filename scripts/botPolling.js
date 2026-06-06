@@ -58,9 +58,10 @@ async function handleUpdate(update) {
     }
 
     if (update.message.voice && isAdmin) {
-      await handleVoice(update.message.voice.file_id).catch(
-        (err) => console.error('[personalBot] voice error:', err.message)
-      );
+      await handleVoice(update.message.voice.file_id).catch(async (err) => {
+        console.error('[personalBot] voice error:', err.message);
+        await sendMessageToUser(chatId, `❌ خطا:\n<code>${err.message}</code>`).catch(() => {});
+      });
       return;
     }
 

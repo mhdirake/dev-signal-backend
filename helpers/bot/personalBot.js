@@ -8,6 +8,7 @@ const axios = require('axios');
 const { sendMessageToUser } = require('@helpers/telegram');
 const { Post, RawItem } = require('@models');
 const { Op } = require('sequelize');
+const { listTasks, addTask, completeTask, deleteTask, editTask, deleteTasksByRange } = require('@helpers/calendar');
 
 const groq = new OpenAI({
   apiKey: process.env.GROQ_API_KEY,
@@ -17,7 +18,6 @@ const groq = new OpenAI({
 const ADMIN_ID = () => process.env.ADMIN_TELEGRAM_USER_ID;
 const DATA_DIR = path.join(__dirname, '../../data');
 const NOTES_FILE = path.join(DATA_DIR, 'notes.json');
-const TASKS_FILE = path.join(DATA_DIR, 'tasks.json');
 
 const chatHistory = [];
 const MAX_HISTORY = 20;
@@ -48,47 +48,30 @@ const toolHandlers = {
     }).join('\n\n');
   },
 
-  add_task({ text, description, project }) {
-    const tasks = readJSON(TASKS_FILE);
-    const nextId = tasks.length ? Math.max(...tasks.map(t => t.id)) + 1 : 1;
-    tasks.push({ id: nextId, text, description: description || null, project: project || null, done: false, createdAt: new Date().toISOString() });
-    writeJSON(TASKS_FILE, tasks);
-    const meta = [
-      project ? `🗂 ${project}` : '',
-      description ? `<i>${description}</i>` : '',
-    ].filter(Boolean).join(' · ');
-    return `✅ تسک اضافه شد:\n\n<b>${nextId}.</b> ${text}${meta ? '\n   ' + meta : ''}`;
+  async add_task({ summary, description, priority, date, startTime, endTime }) {
+    return await addTask({ summary, description, priority, date, startTime, endTime });
   },
 
-  get_tasks() {
-    const active = readJSON(TASKS_FILE).filter(t => !t.done);
-    if (!active.length) return '🎉 هیچ تسک فعالی نداری!';
-    return '📌 <b>تسک‌های فعال:</b>\n\n' + active.map(t => {
-      const meta = [
-        t.project ? `🗂 ${t.project}` : '',
-        t.description ? `<i>${t.description}</i>` : '',
-      ].filter(Boolean).join(' · ');
-      return `${t.id}. ${t.text}${meta ? '\n   ' + meta : ''}`;
-    }).join('\n\n');
+  async get_tasks(args) {
+    const days = (args && args.days) || 7;
+    return await listTasks({ days });
   },
 
-  complete_task({ id }) {
-    const tasks = readJSON(TASKS_FILE);
-    const task = tasks.find(t => t.id === id);
-    if (!task) return `⚠️ تسک ${id} پیدا نشد.`;
-    task.done = true;
-    task.doneAt = new Date().toISOString();
-    writeJSON(TASKS_FILE, tasks);
-    return `✅ تسک تکمیل شد:\n<s>${task.text}</s>`;
+  async complete_task({ eventId }) {
+    return await completeTask({ eventId });
   },
 
-  delete_task({ id }) {
-    const tasks = readJSON(TASKS_FILE);
-    const idx = tasks.findIndex(t => t.id === id);
-    if (idx === -1) return `⚠️ تسک ${id} پیدا نشد.`;
-    const [removed] = tasks.splice(idx, 1);
-    writeJSON(TASKS_FILE, tasks);
-    return `🗑 تسک حذف شد:\n<s>${removed.text}</s>`;
+  async delete_task({ eventId }) {
+    return await deleteTask({ eventId });
+  },
+
+  async edit_task({ eventId, summary, description, priority, date, startTime, endTime }) {
+    return await editTask({ eventId, summary, description, priority, date, startTime, endTime });
+  },
+
+  async delete_tasks_by_range(args) {
+    const days = (args && args.days) || 1;
+    return await deleteTasksByRange({ days });
   },
 };
 
@@ -99,23 +82,11 @@ function todayStart() {
   return d;
 }
 
-function formatTaskLine(t) {
-  const meta = [
-    t.project ? `🗂 ${t.project}` : '',
-    t.description ? `<i>${t.description}</i>` : '',
-  ].filter(Boolean).join(' · ');
-  return `${t.id}. ${t.text}${meta ? '\n   ' + meta : ''}`;
-}
 
 const shortcuts = {
-  'task list': async () => toolHandlers.get_tasks(),
+  'task list': async () => listTasks({ days: 7 }),
 
-  'today task list': async () => {
-    const start = todayStart();
-    const tasks = readJSON(TASKS_FILE).filter(t => !t.done && new Date(t.createdAt) >= start);
-    if (!tasks.length) return '📌 امروز هیچ تسکی اضافه نشده.';
-    return `📌 <b>تسک‌های امروز (${tasks.length}):</b>\n\n` + tasks.map(formatTaskLine).join('\n\n');
-  },
+  'today task list': async () => listTasks({ days: 1 }),
 
   'note list': async () => toolHandlers.get_notes(),
 
@@ -172,15 +143,18 @@ const tools = [
     type: 'function',
     function: {
       name: 'add_task',
-      description: 'Add a task or to-do item that needs to be done',
+      description: 'Add a task to Google Calendar. Ask for date and time if not provided.',
       parameters: {
         type: 'object',
         properties: {
-          text: { type: 'string', description: 'Short task title' },
-          description: { type: 'string', description: 'Optional longer description or details' },
-          project: { type: 'string', description: 'Optional project name this task belongs to' },
+          summary:     { type: 'string', description: 'Task title' },
+          description: { type: 'string', description: 'Optional details' },
+          priority:    { type: 'string', enum: ['urgent', 'high', 'medium', 'normal'], description: 'Task priority' },
+          date:        { type: 'string', description: 'Date in YYYY-MM-DD format' },
+          startTime:   { type: 'string', description: 'Start time in HH:MM format (optional)' },
+          endTime:     { type: 'string', description: 'End time in HH:MM format (optional)' },
         },
-        required: ['text'],
+        required: ['summary', 'date'],
       },
     },
   },
@@ -188,19 +162,25 @@ const tools = [
     type: 'function',
     function: {
       name: 'get_tasks',
-      description: 'Retrieve and display the list of active tasks',
-      parameters: { type: 'object', properties: {}, required: [] },
+      description: 'List tasks from Google Calendar for the next N days',
+      parameters: {
+        type: 'object',
+        properties: {
+          days: { type: 'number', description: 'Number of days ahead to fetch (default 7)' },
+        },
+        required: [],
+      },
     },
   },
   {
     type: 'function',
     function: {
       name: 'complete_task',
-      description: 'Mark a task as done by its ID number',
+      description: 'Mark a task as done and remove it from Google Calendar',
       parameters: {
         type: 'object',
-        properties: { id: { type: 'number', description: 'The task ID to complete' } },
-        required: ['id'],
+        properties: { eventId: { type: 'string', description: 'The Google Calendar event ID' } },
+        required: ['eventId'],
       },
     },
   },
@@ -208,34 +188,72 @@ const tools = [
     type: 'function',
     function: {
       name: 'delete_task',
-      description: 'Permanently delete/remove a task by its ID number',
+      description: 'Delete a task from Google Calendar',
       parameters: {
         type: 'object',
-        properties: { id: { type: 'number', description: 'The task ID to delete' } },
-        required: ['id'],
+        properties: { eventId: { type: 'string', description: 'The Google Calendar event ID' } },
+        required: ['eventId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_tasks_by_range',
+      description: 'Delete ALL tasks within the next N days. Use when user says "delete all tasks for today/tomorrow/this week".',
+      parameters: {
+        type: 'object',
+        properties: {
+          days: { type: 'number', description: '1=today only, 2=today+tomorrow, 7=this week, etc.' },
+        },
+        required: ['days'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'edit_task',
+      description: 'Edit/update an existing task in Google Calendar. Only send fields that need to change.',
+      parameters: {
+        type: 'object',
+        properties: {
+          eventId:     { type: 'string', description: 'The Google Calendar event ID' },
+          summary:     { type: 'string', description: 'New task title in English' },
+          description: { type: 'string', description: 'New description' },
+          priority:    { type: 'string', enum: ['urgent', 'high', 'medium', 'normal'] },
+          date:        { type: 'string', description: 'New date in YYYY-MM-DD format' },
+          startTime:   { type: 'string', description: 'New start time in HH:MM format' },
+          endTime:     { type: 'string', description: 'New end time in HH:MM format' },
+        },
+        required: ['eventId'],
       },
     },
   },
 ];
 
 const SYSTEM_PROMPT = `You are Mehdi's personal AI assistant. Mehdi is an Iranian software developer.
+Today's date is ${new Date().toISOString().split('T')[0]}.
 
-IMPORTANT — only call tools when the intent is EXPLICIT and UNAMBIGUOUS:
-- save_note → ONLY if user clearly says "یادداشت بزن", "ذخیره کن", "note this", "remember this", etc.
-- add_task → ONLY if user clearly says "تسک اضافه کن", "باید انجام بدم", "to-do", "add a task", etc.
-- get_notes → ONLY if user asks to see/list their notes
-- get_tasks → ONLY if user asks to see/list their tasks
-- complete_task → ONLY if user says a specific task is done
-- delete_task → ONLY if user wants to delete/remove a specific task
+TOOL RULES — only call tools when intent is EXPLICIT:
+- save_note → user clearly says "یادداشت بزن", "note this", "remember this"
+- get_notes → user asks to see/list notes
+- get_tasks → user asks to see/list tasks
+- complete_task → user says a specific task is done (needs eventId from task list)
+- delete_task → user wants to delete a specific task (needs eventId from task list)
+- edit_task → user wants to edit/update a task — ask for task list first if eventId unknown, then apply only changed fields
+- delete_tasks_by_range → user wants to delete ALL tasks for today / tomorrow / next N days (days=1 means today, days=2 means today+tomorrow, etc.)
+- add_task → user wants to add a task — BUT only call this tool when you have ALL required fields:
+    • summary (task title) — required — ALWAYS in English, even if user writes in Persian (translate it)
+    • date (YYYY-MM-DD) — required — if missing, ASK the user
+    • startTime / endTime (HH:MM) — optional, ask if user mentions a time
+    • priority: urgent / high / medium / normal — ask if unclear, default to "normal"
 
-For EVERYTHING else — casual chat, greetings, questions, venting, brain dumps, technical questions — just RESPOND naturally. Do NOT call any tool.
+  IMPORTANT for add_task: if the user did not provide a date, DO NOT call the tool yet.
+  Instead, ask: "چه تاریخی؟" or "کِی؟" — then call the tool once you have the date.
+  Convert relative dates: "فردا" → tomorrow's date, "امروز" → today's date, "دوشنبه" → next Monday, etc.
 
-Examples of when NOT to use tools:
-- "چه خبر؟" → just reply conversationally
-- "خسته‌ام" → empathize and respond
-- "داری؟" → just chat
-- "چطوری؟" → greet back
-- Brain dump of ideas → organize and respond as text, do NOT save automatically
+For EVERYTHING else — chat, greetings, questions, venting, brain dumps — just RESPOND naturally. Do NOT call any tool.
 
 Reply in the same language as the user (Persian or English). Be concise and natural.`;
 
@@ -320,14 +338,25 @@ async function handlePersonalMessage(text) {
   }
 
   if (msg.tool_calls?.length) {
-    const toolCall = msg.tool_calls[0];
-    const handler = toolHandlers[toolCall.function.name];
-    if (handler) {
-      const args = JSON.parse(toolCall.function.arguments);
-      const result = await handler(args);
-      chatHistory.push({ role: 'assistant', content: result });
+    const results = [];
+    for (const toolCall of msg.tool_calls) {
+      const handler = toolHandlers[toolCall.function.name];
+      if (handler) {
+        const args = JSON.parse(toolCall.function.arguments);
+        try {
+          const result = await handler(args);
+          results.push(result);
+        } catch (err) {
+          console.error(`[personalBot] tool error (${toolCall.function.name}):`, err.message);
+          results.push(`❌ خطا در اجرای ${toolCall.function.name}:\n<code>${err.message}</code>`);
+        }
+      }
+    }
+    if (results.length) {
+      const combined = results.join('\n\n');
+      chatHistory.push({ role: 'assistant', content: combined });
       if (chatHistory.length > MAX_HISTORY) chatHistory.shift();
-      await sendMessageToUser(adminId, result);
+      await sendMessageToUser(adminId, combined);
       return;
     }
   }
