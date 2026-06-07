@@ -19,8 +19,22 @@ const ADMIN_ID = () => process.env.ADMIN_TELEGRAM_USER_ID;
 const DATA_DIR = path.join(__dirname, '../../data');
 const NOTES_FILE = path.join(DATA_DIR, 'notes.json');
 
-const chatHistory = [];
+const HISTORY_FILE = path.join(DATA_DIR, 'chat_history.json');
 const MAX_HISTORY = 20;
+
+function loadHistory() {
+  try {
+    return JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(history) {
+  fs.writeFileSync(HISTORY_FILE, JSON.stringify(history.slice(-MAX_HISTORY), null, 2));
+}
+
+const chatHistory = loadHistory();
 
 function readJSON(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -84,6 +98,8 @@ function todayStart() {
 
 
 const shortcuts = {
+  'tasks': async () => listTasks({ days: 7 }),
+
   'task list': async () => listTasks({ days: 7 }),
 
   'today task list': async () => listTasks({ days: 1 }),
@@ -281,7 +297,7 @@ async function transcribeVoice(fileId) {
 
 const MENU_KEYBOARD = {
   keyboard: [
-    ['📋 Task List', '📅 Today Task List'],
+    ['📅 Tasks', '📋 Task List'],
     ['📝 Note List', '🗒 Today Note List'],
     ['📡 Today Post Fetch', '📢 Today Post Published'],
   ],
@@ -348,7 +364,7 @@ async function handlePersonalMessage(text) {
           results.push(result);
         } catch (err) {
           console.error(`[personalBot] tool error (${toolCall.function.name}):`, err.message);
-          results.push(`❌ خطا در اجرای ${toolCall.function.name}:\n<code>${err.message}</code>`);
+          results.push(`❌ Error in ${toolCall.function.name}:\n<code>${err.message}</code>`);
         }
       }
     }
@@ -356,6 +372,7 @@ async function handlePersonalMessage(text) {
       const combined = results.join('\n\n');
       chatHistory.push({ role: 'assistant', content: combined });
       if (chatHistory.length > MAX_HISTORY) chatHistory.shift();
+      saveHistory(chatHistory);
       await sendMessageToUser(adminId, combined);
       return;
     }
@@ -364,6 +381,7 @@ async function handlePersonalMessage(text) {
   const reply = msg.content?.trim() || '...';
   chatHistory.push({ role: 'assistant', content: reply });
   if (chatHistory.length > MAX_HISTORY) chatHistory.shift();
+  saveHistory(chatHistory);
   await sendMessageToUser(adminId, reply);
 }
 

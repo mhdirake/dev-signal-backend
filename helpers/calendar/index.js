@@ -39,39 +39,93 @@ function formatTime(start) {
   return new Date(start.dateTime).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
 }
 
+function toTehranDateLabel(dateStr, dateTimeStr) {
+  const d = dateStr ? new Date(dateStr) : new Date(dateTimeStr);
+  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Tehran' }); // YYYY-MM-DD
+}
+
+function friendlyDate(isoDate) {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tehran' });
+  const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Tehran' });
+  if (isoDate === today) return '📅 Today';
+  if (isoDate === tomorrow) return '📅 Tomorrow';
+  return `📅 ${new Date(isoDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`;
+}
+
 async function listTasks({ days = 7 } = {}) {
   const calendar = getCalendar();
   const now = new Date();
+
+  // fetch overdue (past 7 days) + upcoming
+  const pastStart = new Date(now);
+  pastStart.setDate(pastStart.getDate() - 7);
   const end = new Date(now);
   end.setDate(end.getDate() + days);
 
   const { data } = await calendar.events.list({
     calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
-    timeMin: now.toISOString(),
+    timeMin: pastStart.toISOString(),
     timeMax: end.toISOString(),
     singleEvents: true,
     orderBy: 'startTime',
-    maxResults: 30,
+    maxResults: 50,
   });
 
   const events = data.items || [];
-  if (!events.length) return `📅 ${days === 1 ? 'امروز' : days + ' روز آینده'} هیچ تسکی نداری.`;
+  if (!events.length) return `📅 No tasks for ${days === 1 ? 'today' : `the next ${days} days`}.`;
 
-  const sorted = [...events].sort((a, b) => {
-    const pa = (COLOR_TO_PRIORITY[a.colorId] || PRIORITY_MAP.normal).order;
-    const pb = (COLOR_TO_PRIORITY[b.colorId] || PRIORITY_MAP.normal).order;
-    return pa - pb;
-  });
+  const nowStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Tehran' });
 
-  const title = `📅 <b>تسک‌ها (${events.length}):</b>`;
-  return title + '\n\n' + sorted.map((e, i) => {
-    const priority = (COLOR_TO_PRIORITY[e.colorId] || PRIORITY_MAP.normal).label;
-    const time = formatTime(e.start);
-    const name = e.summary || '(بدون عنوان)';
-    const shortId = e.id.split('_')[0];
-    const desc = e.description ? `\n   📝 ${e.description}` : '';
-    return `${i + 1}. ${priority} <b>${name}</b>\n   🕐 ${time}   <code>${shortId}</code>${desc}`;
-  }).join('\n\n');
+  // separate overdue vs upcoming
+  const overdue = [];
+  const upcoming = [];
+  for (const e of events) {
+    const dateLabel = toTehranDateLabel(e.start?.date, e.start?.dateTime);
+    if (dateLabel < nowStr) overdue.push(e);
+    else upcoming.push(e);
+  }
+
+  // group upcoming by date
+  const byDate = {};
+  for (const e of upcoming) {
+    const dateLabel = toTehranDateLabel(e.start?.date, e.start?.dateTime);
+    if (!byDate[dateLabel]) byDate[dateLabel] = [];
+    byDate[dateLabel].push(e);
+  }
+
+  const lines = [];
+  let idx = 1;
+
+  if (overdue.length) {
+    lines.push(`⚠️ <b>Overdue (${overdue.length}):</b>`);
+    for (const e of overdue) {
+      const priority = (COLOR_TO_PRIORITY[e.colorId] || PRIORITY_MAP.normal).label;
+      const name = e.summary || '(no title)';
+      const shortId = e.id.split('_')[0];
+      lines.push(`${idx++}. ${priority} <b>${name}</b>   <code>${shortId}</code>`);
+    }
+    lines.push('');
+  }
+
+  for (const dateKey of Object.keys(byDate).sort()) {
+    lines.push(`${friendlyDate(dateKey)}:`);
+    const dayEvents = byDate[dateKey].sort((a, b) => {
+      const pa = (COLOR_TO_PRIORITY[a.colorId] || PRIORITY_MAP.normal).order;
+      const pb = (COLOR_TO_PRIORITY[b.colorId] || PRIORITY_MAP.normal).order;
+      return pa - pb;
+    });
+    for (const e of dayEvents) {
+      const priority = (COLOR_TO_PRIORITY[e.colorId] || PRIORITY_MAP.normal).label;
+      const time = formatTime(e.start);
+      const name = e.summary || '(no title)';
+      const shortId = e.id.split('_')[0];
+      const desc = e.description ? `\n   📝 ${e.description}` : '';
+      lines.push(`${idx++}. ${priority} <b>${name}</b>\n   🕐 ${time}   <code>${shortId}</code>${desc}`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n').trim();
 }
 
 async function addTask({ summary, description, priority = 'normal', date, startTime, endTime }) {
@@ -103,7 +157,7 @@ async function addTask({ summary, description, priority = 'normal', date, startT
     requestBody: body,
   });
 
-  return `✅ تسک اضافه شد:\n\n${pData.label} <b>${summary}</b>\n🕐 ${formatTime(data.start)}`;
+  return `✅ Task added:\n\n${pData.label} <b>${summary}</b>\n🕐 ${formatTime(data.start)}`;
 }
 
 async function completeTask({ eventId }) {
@@ -112,7 +166,7 @@ async function completeTask({ eventId }) {
     calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
     eventId,
   });
-  return `✅ تسک تکمیل و حذف شد.`;
+  return `✅ Task completed and removed.`;
 }
 
 async function deleteTask({ eventId }) {
@@ -121,7 +175,7 @@ async function deleteTask({ eventId }) {
     calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
     eventId,
   });
-  return `🗑 تسک حذف شد.`;
+  return `🗑 Task deleted.`;
 }
 
 async function editTask({ eventId, summary, description, priority, date, startTime, endTime }) {
@@ -146,7 +200,7 @@ async function editTask({ eventId, summary, description, priority, date, startTi
     requestBody: patch,
   });
 
-  return `✏️ تسک آپدیت شد.`;
+  return `✏️ Task updated.`;
 }
 
 async function deleteTasksByRange({ days = 1 } = {}) {
@@ -164,7 +218,7 @@ async function deleteTasksByRange({ days = 1 } = {}) {
   });
 
   const events = data.items || [];
-  if (!events.length) return `📅 تسکی برای حذف پیدا نشد.`;
+  if (!events.length) return `📅 No tasks found to delete.`;
 
   await Promise.all(events.map(e =>
     calendar.events.delete({
@@ -173,7 +227,7 @@ async function deleteTasksByRange({ days = 1 } = {}) {
     })
   ));
 
-  return `🗑 ${events.length} تسک حذف شد.`;
+  return `🗑 ${events.length} task(s) deleted.`;
 }
 
 module.exports = { listTasks, addTask, completeTask, deleteTask, editTask, deleteTasksByRange };

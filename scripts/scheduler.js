@@ -5,6 +5,8 @@ const { Op } = require('sequelize');
 const { Source, Post } = require('@models');
 const { fetchQueue } = require('@queues/workers/fetchWorker');
 const { publishQueue } = require('@queues/workers/publishWorker');
+const { listTasks } = require('@helpers/calendar');
+const { sendMessageToUser } = require('@helpers/telegram');
 
 // Every 30 minutes — fetch new content from sources
 cron.schedule('*/30 * * * *', async () => {
@@ -45,4 +47,17 @@ cron.schedule('* * * * *', async () => {
   }
 });
 
-console.log('[scheduler] Cron registered — fetch every 30min, publish check every 1min');
+// Every morning at 8:00 AM Tehran — send daily task briefing
+cron.schedule('0 8 * * *', async () => {
+  try {
+    const adminId = process.env.ADMIN_TELEGRAM_USER_ID;
+    const message = await listTasks({ days: 1 });
+    const header = `☀️ <b>Good morning! Today's tasks:</b>\n\n`;
+    await sendMessageToUser(adminId, header + message.replace(/^📅 <b>.*?<\/b>\n\n/, ''));
+    console.log('[scheduler] Daily briefing sent');
+  } catch (err) {
+    console.error('[scheduler] Daily briefing failed:', err.message);
+  }
+}, { timezone: 'Asia/Tehran' });
+
+console.log('[scheduler] Cron registered — fetch every 30min, publish check every 1min, briefing at 8AM');
