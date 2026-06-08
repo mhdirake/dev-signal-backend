@@ -1,17 +1,22 @@
 'use strict';
 
-const providers = {
+const providerMap = {
   claude: () => require('./providers/claude'),
   openai: () => require('./providers/openai'),
   groq: () => require('./providers/groq'),
 };
 
 const providerName = process.env.AI_PROVIDER || 'claude';
-const provider = providers[providerName];
+const loader = providerMap[providerName];
 
-if (!provider) {
-  throw new Error(`Unknown AI_PROVIDER: "${providerName}". Supported: ${Object.keys(providers).join(', ')}`);
+if (!loader) {
+  throw new Error(`Unknown AI_PROVIDER: "${providerName}". Supported: ${Object.keys(providerMap).join(', ')}`);
 }
 
-module.exports = { analyzeContent: provider() };
+const provider = loader();
+
+module.exports = {
+  analyzeContent: provider.analyzeContent,
+  call: provider.call,
+};
 ``
