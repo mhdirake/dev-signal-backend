@@ -11,4 +11,8 @@ module.exports = (app) => {
   app.patch('/api/admin/posts/:uuid/schedule', postsController.schedule);
   app.patch('/api/admin/posts/:uuid', postsController.update);
   app.post('/api/admin/posts/:uuid/generate-blog', blogController.generateFromPost);
+  app.post('/api/admin/posts/:uuid/generate-linkedin', postsController.generateLinkedinDraft);
+  app.get('/api/admin/posts/:uuid/translations/:locale', postsController.getTranslation);
+  app.post('/api/admin/posts/:uuid/translations/:locale/generate', postsController.generateTranslation);
+  app.patch('/api/admin/posts/:uuid/translations/:locale', postsController.updateTranslation);
 };

@@ -28,5 +28,5 @@ function buildUserMessage(post) {
 }
 
 module.exports = async function generateBlogPost(post) {
-  return call(SYSTEM_PROMPT, buildUserMessage(post), 4096);
+  return call(SYSTEM_PROMPT, buildUserMessage(post), 4096, 'blog_generate');
 };

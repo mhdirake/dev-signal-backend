@@ -3,7 +3,7 @@
 const { sendMessageToUser } = require('./index');
 const escapeHtml = require('./escapeHtml');
 
-module.exports = async function notifyAdmin(post, persianSummary) {
+module.exports = async function notifyAdmin(post, persianSummary, linkedinDraft) {
   const adminId = process.env.ADMIN_TELEGRAM_USER_ID;
 
   const text = [
@@ -29,5 +29,9 @@ module.exports = async function notifyAdmin(post, persianSummary) {
     ]],
   };
 
-  return sendMessageToUser(adminId, text, { reply_markup });
+  await sendMessageToUser(adminId, text, { reply_markup });
+
+  if (linkedinDraft) {
+    await sendMessageToUser(adminId, `💼 <b>پیش‌نویس LinkedIn:</b>\n\n${escapeHtml(linkedinDraft)}`);
+  }
 };

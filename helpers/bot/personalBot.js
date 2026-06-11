@@ -132,6 +132,17 @@ const shortcuts = {
     return `📢 <b>امروز ${posts.length} پست منتشر شد:</b>\n\n` +
       posts.map((p, i) => `${i + 1}. ${p.headline}`).join('\n');
   },
+
+  'linkedin drafts': async () => {
+    const posts = await Post.findAll({
+      where: { linkedinDraft: { [Op.not]: null } },
+      order: [['createdAt', 'DESC']],
+      limit: 10,
+    });
+    if (!posts.length) return '💼 هیچ پست LinkedIn آماده‌ای نداری.';
+    return `💼 <b>${posts.length} پیش‌نویس LinkedIn آماده:</b>\n\n` +
+      posts.map((p, i) => `${i + 1}. ${p.headline}\n   <i>${p.status}</i>`).join('\n\n');
+  },
 };
 
 const tools = [
@@ -300,6 +311,7 @@ const MENU_KEYBOARD = {
     ['📅 Tasks', '📋 Task List'],
     ['📝 Note List', '🗒 Today Note List'],
     ['📡 Today Post Fetch', '📢 Today Post Published'],
+    ['💼 LinkedIn Drafts'],
   ],
   resize_keyboard: true,
   persistent: true,

@@ -21,5 +21,19 @@ module.exports = async function generatePersianSummary(post) {
     max_tokens: 400,
   });
 
-  return response.choices[0].message.content.trim();
+  const content = response.choices[0].message.content.trim();
+
+  const usage = response.usage;
+  if (usage) {
+    require('@models').TokenUsage.create({
+      provider: 'groq',
+      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+      feature: 'persian_summary',
+      inputTokens: usage.prompt_tokens || 0,
+      outputTokens: usage.completion_tokens || 0,
+      costUsd: 0,
+    }).catch(err => console.error('[groq] token tracking failed:', err.message));
+  }
+
+  return content;
 };

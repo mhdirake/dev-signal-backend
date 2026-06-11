@@ -7,6 +7,7 @@ module.exports = (sequelize, DataTypes) => {
     static associate(models) {
       Post.belongsTo(models.RawItem, { foreignKey: 'rawItemId', as: 'rawItem' });
       Post.hasMany(models.PublishLog, { foreignKey: 'postId', as: 'publishLogs' });
+      Post.hasMany(models.PostTranslation, { foreignKey: 'postId', as: 'translations' });
     }
   }
 
@@ -39,6 +40,7 @@ module.exports = (sequelize, DataTypes) => {
     publishedAt: { allowNull: true, type: DataTypes.DATE },
     telegramMessageId: { allowNull: true, type: DataTypes.STRING },
     rejectionReason: { allowNull: true, type: DataTypes.TEXT },
+    linkedinDraft: { allowNull: true, type: DataTypes.TEXT },
   }, {
     sequelize,
     modelName: 'Post',
