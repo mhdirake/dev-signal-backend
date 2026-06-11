@@ -31,6 +31,7 @@ module.exports = (sequelize, DataTypes) => {
     impactAnalysis: { allowNull: false, type: DataTypes.TEXT },
     recommendedAction: { allowNull: false, type: DataTypes.TEXT },
     sourceUrl: { allowNull: false, type: DataTypes.STRING(2048) },
+    coverImage: { allowNull: true, type: DataTypes.STRING(2048) },
     status: {
       allowNull: false,
       type: DataTypes.ENUM('pending', 'approved', 'scheduled', 'published', 'rejected'),

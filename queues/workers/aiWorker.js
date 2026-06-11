@@ -9,6 +9,8 @@ const generatePersianSummary = require('@helpers/ai/persian');
 const generateLinkedinPost = require('@helpers/ai/linkedinGenerator');
 const translatePostToFarsi = require('@helpers/ai/translatePost');
 const notifyAdmin = require('@helpers/telegram/adminNotifier');
+const fetchOgImage = require('@helpers/fetchers/imageFetcher');
+const logJob = require('@helpers/jobLogger');
 
 const QUEUE_NAME = 'ai';
 const RELEVANCE_THRESHOLD = 0.5;
@@ -31,16 +33,16 @@ const worker = new Worker(QUEUE_NAME, async (job) => {
   const rawItem = await RawItem.findByPk(rawItemId, { include: [{ association: 'source' }] });
   if (!rawItem || rawItem.processed) return;
 
-  const result = await analyzeContent({
-    title: rawItem.title,
-    url: rawItem.url,
-    body: rawItem.body,
-  });
+  const [result, coverImage] = await Promise.all([
+    analyzeContent({ title: rawItem.title, url: rawItem.url, body: rawItem.body }),
+    rawItem.imageUrl ? Promise.resolve(rawItem.imageUrl) : fetchOgImage(rawItem.url),
+  ]);
 
   await rawItem.update({ processed: true });
 
   if (result.relevanceScore < RELEVANCE_THRESHOLD) {
     console.log(`[aiWorker] Skipped raw item ${rawItemId} — score: ${result.relevanceScore}`);
+    logJob({ queue: 'ai', job: 'process', status: 'skipped', summary: `Skipped — score ${parseFloat(result.relevanceScore).toFixed(2)} < ${RELEVANCE_THRESHOLD}`, meta: { rawItemId, score: result.relevanceScore, title: rawItem.title } });
     return;
   }
 
@@ -58,6 +60,7 @@ const worker = new Worker(QUEUE_NAME, async (job) => {
 
   if (duplicate) {
     console.log(`[aiWorker] Duplicate of post ${duplicate.id} — skipping raw item ${rawItemId}`);
+    logJob({ queue: 'ai', job: 'process', status: 'skipped', summary: `Duplicate of post #${duplicate.id}`, meta: { rawItemId, duplicatePostId: duplicate.id, title: rawItem.title } });
     return;
   }
 
@@ -71,10 +74,12 @@ const worker = new Worker(QUEUE_NAME, async (job) => {
     impactAnalysis: result.impactAnalysis,
     recommendedAction: result.recommendedAction,
     sourceUrl: rawItem.url,
+    coverImage: coverImage || null,
     status: 'pending',
   });
 
   console.log(`[aiWorker] Created post ${post.id} — score: ${result.relevanceScore}, category: ${result.category}`);
+  logJob({ queue: 'ai', job: 'process', status: 'success', summary: `"${post.headline.length > 80 ? post.headline.slice(0, 80) + '…' : post.headline}"`, meta: { postId: post.id, score: result.relevanceScore, category: result.category } });
 
   const sourceType = rawItem.source?.type;
   const linkedinEligible = sourceType !== 'npm' && result.relevanceScore >= 0.7;
@@ -118,6 +123,7 @@ worker.on('ready', () => console.log('[aiWorker] Worker ready'));
 worker.on('error', (err) => console.error('[aiWorker] Worker error:', err.message));
 worker.on('failed', (job, err) => {
   console.error(`[aiWorker] Job ${job.id} failed:`, err.message);
+  logJob({ queue: 'ai', job: 'process', status: 'failed', summary: err.message, meta: { jobId: job.id, data: job.data } });
 });
 
 module.exports = { aiQueue };

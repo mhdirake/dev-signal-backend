@@ -18,6 +18,7 @@ module.exports = (sequelize, DataTypes) => {
     title: { allowNull: false, type: DataTypes.STRING },
     url: { allowNull: false, type: DataTypes.STRING(2048) },
     body: { allowNull: true, type: DataTypes.TEXT },
+    imageUrl: { allowNull: true, type: DataTypes.STRING(2048) },
     publishedAt: { allowNull: true, type: DataTypes.DATE },
     processed: { allowNull: false, type: DataTypes.BOOLEAN, defaultValue: false },
   }, {

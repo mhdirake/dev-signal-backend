@@ -40,6 +40,20 @@ exports.toggle = async (req, res) => {
   }
 };
 
+exports.fetch = async (req, res) => {
+  try {
+    const source = await Source.findOne({ where: { uuid: req.params.uuid } });
+    if (!source) return res.status(404).json({ message: 'Source not found' });
+
+    const { fetchQueue } = require('@queues/workers/fetchWorker');
+    await fetchQueue.add('fetch', { sourceId: source.id });
+
+    res.json({ message: 'Fetch queued' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 exports.remove = async (req, res) => {
   try {
     const source = await Source.findOne({ where: { uuid: req.params.uuid } });

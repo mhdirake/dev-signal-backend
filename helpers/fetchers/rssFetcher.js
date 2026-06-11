@@ -1,7 +1,22 @@
 'use strict';
 
 const Parser = require('rss-parser');
-const parser = new Parser();
+
+const parser = new Parser({
+  customFields: {
+    item: [
+      ['media:content', 'mediaContent'],
+      ['media:thumbnail', 'mediaThumbnail'],
+    ],
+  },
+});
+
+function extractImage(item) {
+  if (item.enclosure?.url && item.enclosure.type?.startsWith('image/')) return item.enclosure.url;
+  if (item.mediaContent?.['$']?.url) return item.mediaContent['$'].url;
+  if (item.mediaThumbnail?.['$']?.url) return item.mediaThumbnail['$'].url;
+  return null;
+}
 
 module.exports = async function fetchRss(identifier, lastFetchedAt) {
   const feed = await parser.parseURL(identifier);
@@ -21,5 +36,6 @@ module.exports = async function fetchRss(identifier, lastFetchedAt) {
       url: item.link,
       body: item.contentSnippet || item.content || null,
       publishedAt: item.isoDate ? new Date(item.isoDate) : (item.pubDate ? new Date(item.pubDate) : null),
+      imageUrl: extractImage(item),
     }));
 };
